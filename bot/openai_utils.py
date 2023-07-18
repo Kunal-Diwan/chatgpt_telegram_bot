@@ -133,8 +133,12 @@ class ChatGPT:
 
         messages = [{"role": "system", "content": prompt}]
         for dialog_message in dialog_messages:
-            messages.append({"role": "user", "content": dialog_message["user"]})
-            messages.append({"role": "assistant", "content": dialog_message["bot"]})
+            messages.extend(
+                (
+                    {"role": "user", "content": dialog_message["user"]},
+                    {"role": "assistant", "content": dialog_message["bot"]},
+                )
+            )
         messages.append({"role": "user", "content": message})
 
         return messages
@@ -146,12 +150,9 @@ class ChatGPT:
     def _count_tokens_from_messages(self, messages, answer, model="gpt-3.5-turbo"):
         encoding = tiktoken.encoding_for_model(model)
 
-        if model == "gpt-3.5-turbo-16k":
+        if model in ["gpt-3.5-turbo-16k", "gpt-3.5-turbo"]:
             tokens_per_message = 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
             tokens_per_name = -1  # if there's a name, the role is omitted
-        elif model == "gpt-3.5-turbo":
-            tokens_per_message = 4
-            tokens_per_name = -1    
         elif model == "gpt-4":
             tokens_per_message = 3
             tokens_per_name = 1
@@ -190,8 +191,7 @@ async def transcribe_audio(audio_file):
 
 async def generate_images(prompt, n_images=4):
     r = await openai.Image.acreate(prompt=prompt, n=n_images, size="512x512")
-    image_urls = [item.url for item in r.data]
-    return image_urls
+    return [item.url for item in r.data]
 
 
 async def is_content_acceptable(prompt):

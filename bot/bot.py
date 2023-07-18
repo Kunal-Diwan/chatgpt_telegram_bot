@@ -94,7 +94,7 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
-    if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
+    if isinstance(n_used_tokens, (int, float)):  # old format
         new_n_used_tokens = {
             "gpt-3.5-turbo": {
                 "n_input_tokens": 0,
@@ -113,22 +113,25 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 
 
 async def is_bot_mentioned(update: Update, context: CallbackContext):
-     try:
-         message = update.message
+    try:
+        message = update.message
 
-         if message.chat.type == "private":
-             return True
+        if message.chat.type == "private":
+            return True
 
-         if message.text is not None and ("@" + context.bot.username) in message.text:
-             return True
+        if (
+            message.text is not None
+            and f"@{context.bot.username}" in message.text
+        ):
+            return True
 
-         if message.reply_to_message is not None:
-             if message.reply_to_message.from_user.id == context.bot.id:
-                 return True
-     except:
-         return True
-     else:
-         return False
+        if message.reply_to_message is not None:
+            if message.reply_to_message.from_user.id == context.bot.id:
+                return True
+    except:
+        return True
+    else:
+        return False
 
 
 async def start_handle(update: Update, context: CallbackContext):
@@ -153,14 +156,14 @@ async def help_handle(update: Update, context: CallbackContext):
 
 
 async def help_group_chat_handle(update: Update, context: CallbackContext):
-     await register_user_if_not_exists(update, context, update.message.from_user)
-     user_id = update.message.from_user.id
-     db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-     text = HELP_GROUP_CHAT_MESSAGE.format(bot_username="@" + context.bot.username)
+    text = HELP_GROUP_CHAT_MESSAGE.format(bot_username=f"@{context.bot.username}")
 
-     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-     await update.message.reply_video(config.help_group_chat_video_path)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.message.reply_video(config.help_group_chat_video_path)
 
 
 async def retry_handle(update: Update, context: CallbackContext):
@@ -195,7 +198,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
     # remove bot mention (in group chats)
     if update.message.chat.type != "private":
-        _message = _message.replace("@" + context.bot.username, "").strip()
+        _message = _message.replace(f"@{context.bot.username}", "").strip()
 
     await register_user_if_not_exists(update, context, update.message.from_user)
     if await is_previous_message_not_answered_yet(update, context): return
@@ -310,8 +313,6 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await task
         except asyncio.CancelledError:
             await update.message.reply_text("✅ Canceled", parse_mode=ParseMode.HTML)
-        else:
-            pass
         finally:
             if user_id in user_tasks:
                 del user_tasks[user_id]
@@ -322,8 +323,10 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
 
     user_id = update.message.from_user.id
     if user_semaphores[user_id].locked():
-        text = "⏳ Please <b>wait</b> for a reply to the previous message\n"
-        text += "Or you can /cancel it"
+        text = (
+            "⏳ Please <b>wait</b> for a reply to the previous message\n"
+            + "Or you can /cancel it"
+        )
         await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
         return True
     else:
@@ -384,17 +387,18 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     try:
         image_urls = await openai_utils.generate_images(message, n_images=config.return_n_generated_images)
     except openai.error.InvalidRequestError as e:
-        if str(e).startswith("Your request was rejected as a result of our safety system"):
-            text = "🥲 Your request <b>doesn't comply</b> with OpenAI's usage policies.\nWhat did you write there, huh?"
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-            return
-        else:
+        if not str(e).startswith(
+            "Your request was rejected as a result of our safety system"
+        ):
             raise
 
+        text = "🥲 Your request <b>doesn't comply</b> with OpenAI's usage policies.\nWhat did you write there, huh?"
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
     # token usage
     db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + db.get_user_attribute(user_id, "n_generated_images"))
 
-    for i, image_url in enumerate(image_urls):
+    for image_url in image_urls:
         await update.message.chat.send_action(action="upload_photo")
         await update.message.reply_photo(image_url, parse_mode=ParseMode.HTML)
 
@@ -531,7 +535,7 @@ def get_settings_menu(user_id: int):
     for model_key in config.models["available_text_models"]:
         title = config.models["info"][model_key]["name"]
         if model_key == current_model:
-            title = "✅ " + title
+            title = f"✅ {title}"
 
         buttons.append(
             InlineKeyboardButton(title, callback_data=f"set_settings|{model_key}")
